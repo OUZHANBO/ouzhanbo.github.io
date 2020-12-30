@@ -1,0 +1,221 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=2"><meta name="theme-color" content="#222"><meta name="generator" content="Hexo 5.2.0"><link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png"><link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png"><link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png"><link rel="mask-icon" href="/images/logo.svg" color="#222"><link rel="stylesheet" href="/css/main.css"><link rel="stylesheet" href="/lib/font-awesome/css/all.min.css"><link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css"><link rel="stylesheet" href="//cdn.jsdelivr.net/npm/pace-js@1/themes/blue/pace-theme-minimal.css"><script src="//cdn.jsdelivr.net/npm/pace-js@1/pace.min.js"></script><script id="hexo-configurations">var NexT=window.NexT||{},CONFIG={hostname:"ouzhanbo.github.io",root:"/",scheme:"Pisces",version:"7.8.0",exturl:!1,sidebar:{position:"left",display:"post",padding:18,offset:12,onmobile:!1},copycode:{enable:!1,show_result:!1,style:null},back2top:{enable:!0,sidebar:!1,scrollpercent:!0},bookmark:{enable:!0,color:"#222",save:"auto"},fancybox:!0,mediumzoom:!0,lazyload:!1,pangu:!0,comments:{style:"tabs",active:null,storage:!0,lazyload:!1,nav:null},algolia:{hits:{per_page:10},labels:{input_placeholder:"Search for Posts",hits_empty:"We didn't find any results for the search: ${query}",hits_stats:"${hits} results found in ${time} ms"}},localsearch:{enable:!0,trigger:"auto",top_n_per_article:1,unescape:!1,preload:!1},motion:{enable:!0,async:!1,transition:{post_block:"fadeIn",post_header:"slideDownIn",post_body:"slideDownIn",coll_header:"slideLeftIn",sidebar:"slideUpIn"}},path:"search.xml"}</script><meta name="description" content="Redis 为什么要自己实现一个 SDS？原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快用 C 的字符数组实现的字符串在获取字符串长度时需要遍历整个字符数组，然后把每个字符进行计数，直到遇到空字符（&#39;\0&#39; ） 才停止计数得出字符串的长度，这样的时间复杂度为 O(N)  而 SDS 在 len 属性中记录了字符串的长度，所以获取字符串的长度就相当"><meta property="og:type" content="article"><meta property="og:title" content="2020-01-21-redis为什么要自己实现SDS"><meta property="og:url" content="http://ouzhanbo.github.io/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/index.html"><meta property="og:site_name" content="OUZHANBO"><meta property="og:description" content="Redis 为什么要自己实现一个 SDS？原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快用 C 的字符数组实现的字符串在获取字符串长度时需要遍历整个字符数组，然后把每个字符进行计数，直到遇到空字符（&#39;\0&#39; ） 才停止计数得出字符串的长度，这样的时间复杂度为 O(N)  而 SDS 在 len 属性中记录了字符串的长度，所以获取字符串的长度就相当"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/486a41e3-fc8c-51b1-8012-673b9b65bed0.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//17e4cc89-1869-5162-a86d-a4521526be76.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//6b53d401-6a33-5d9d-b3c3-d9fc2cf11344.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//fbd60a7d-1cd6-5380-8dda-765e517d2875.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//5dfb78a7-5103-5fc5-8bbe-b84346a9a8c3.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//8b5dceef-e0ca-523b-a431-1b73c23481d0.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//5dfb78a7-5103-5fc5-8bbe-b84346a9a8c3.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//8b5dceef-e0ca-523b-a431-1b73c23481d0.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/600c714b-f1aa-51e7-b3e2-41c9bebbd790.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/63d24217-4e56-4f58-a7c0-ff90a4b2e73a.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/636d5b62-c44f-5c9a-a5f4-b4d32befb844.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/2809aa3e-8279-571c-b030-8c75e1e77f2d.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/4f7dab93-d3df-5066-b3c7-0d7779acaa4d.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/24d91093-b1f8-551e-8c3d-771d65061f87.png"><meta property="og:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/5c7f5e8b-0a9e-5f63-8236-1b39eddd9caf.png"><meta property="article:published_time" content="2020-01-21T12:18:38.000Z"><meta property="article:modified_time" content="2020-12-29T07:02:09.715Z"><meta property="article:author" content="ouzhanbo"><meta property="article:tag" content="redis"><meta name="twitter:card" content="summary"><meta name="twitter:image" content="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/486a41e3-fc8c-51b1-8012-673b9b65bed0.png"><link rel="canonical" href="http://ouzhanbo.github.io/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/"><script id="page-configurations">CONFIG.page={sidebar:"",isHome:!1,isPost:!0,lang:"zh-CN"}</script><title>2020-01-21-redis为什么要自己实现SDS | OUZHANBO</title><noscript><style>.sidebar-inner,.use-motion .brand,.use-motion .collection-header,.use-motion .comments,.use-motion .menu-item,.use-motion .pagination,.use-motion .post-block,.use-motion .post-body,.use-motion .post-header{opacity:initial}.use-motion .site-subtitle,.use-motion .site-title{opacity:initial;top:initial}.use-motion .logo-line-before i{left:initial}.use-motion .logo-line-after i{right:initial}</style></noscript></head><body itemscope itemtype="http://schema.org/WebPage"><div class="container use-motion"><div class="headband"></div><header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="header-inner"><div class="site-brand-container"><div class="site-nav-toggle"><div class="toggle" aria-label="切换导航栏"><span class="toggle-line toggle-line-first"></span><span class="toggle-line toggle-line-middle"></span><span class="toggle-line toggle-line-last"></span></div></div><div class="site-meta"><a href="/" class="brand" rel="start"><span class="logo-line-before"><i></i></span><h1 class="site-title">OUZHANBO</h1><span class="logo-line-after"><i></i></span></a><p class="site-subtitle" itemprop="description">对于我这种菜鸡来说，毕业等于失业</p></div><div class="site-nav-right"><div class="toggle popup-trigger"><i class="fa fa-search fa-fw fa-lg"></i></div></div></div><nav class="site-nav"><ul id="menu" class="main-menu menu"><li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i> 首页</a></li><li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i> 关于</a></li><li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i> 标签</a></li><li class="menu-item menu-item-categories"><a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i> 分类</a></li><li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i> 归档</a></li><li class="menu-item menu-item-search"><a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i> 搜索</a></li></ul></nav><div class="search-pop-overlay"><div class="popup search-popup"><div class="search-header"><span class="search-icon"><i class="fa fa-search"></i></span><div class="search-input-container"> <input autocomplete="off" autocapitalize="off" placeholder="搜索..." spellcheck="false" type="search" class="search-input"></div><span class="popup-btn-close"><i class="fa fa-times-circle"></i></span></div><div id="search-result"><div id="no-result"><i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i></div></div></div></div></div></header><div class="back-to-top"><i class="fa fa-arrow-up"></i> <span>0%</span></div><div class="reading-progress-bar"></div><a role="button" class="book-mark-link book-mark-link-fixed"></a> <a href="https://github.com/OUZHANBO" class="github-corner" title="Follow me on GitHub" aria-label="Follow me on GitHub" rel="noopener" target="_blank"><svg width="80" height="80" viewBox="0 0 250 250" aria-hidden="true"><path d="M0 0 115 115 130 115 142 142 250 250 250 0Z"></path><path d="M128.3 109C113.8 99.7 119 89.6 119 89.6 122 82.7 120.5 78.6 120.5 78.6 119.2 72 123.4 76.3 123.4 76.3 127.3 80.9 125.5 87.3 125.5 87.3 122.9 97.6 130.6 101.9 134.4 103.2" fill="currentColor" style="transform-origin:130px 106px" class="octo-arm"></path><path d="M115 115C114.9 115.1 118.7 116.5 119.8 115.4L133.7 101.6C136.9 99.2 139.9 98.4 142.2 98.6 133.8 88 127.5 74.4 143.8 58 148.5 53.4 154 51.2 159.7 51 160.3 49.4 163.2 43.6 171.4 40.1 171.4 40.1 176.1 42.5 178.8 56.2 183.1 58.6 187.2 61.8 190.9 65.4 194.5 69 197.7 73.2 200.1 77.6 213.8 80.2 216.3 84.9 216.3 84.9 212.7 93.1 206.9 96 205.4 96.6 205.1 102.4 203 107.8 198.3 112.5 181.9 128.9 168.3 122.5 157.7 114.1 157.9 116.9 156.7 120.9 152.7 124.9L141 136.5C139.8 137.7 141.6 141.9 141.8 141.8Z" fill="currentColor" class="octo-body"></path></svg></a><main class="main"><div class="main-inner"><div class="content-wrap"><div class="content post posts-expand"><article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN"><link itemprop="mainEntityOfPage" href="http://ouzhanbo.github.io/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/"><span hidden itemprop="author" itemscope itemtype="http://schema.org/Person"><meta itemprop="image" content="/images/avatar.png"><meta itemprop="name" content="ouzhanbo"><meta itemprop="description" content="好烦想辞职"></span><span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization"><meta itemprop="name" content="OUZHANBO"></span><header class="post-header"><h1 class="post-title" itemprop="name headline"> 2020-01-21-redis为什么要自己实现SDS</h1><div class="post-meta"><span class="post-meta-item"><span class="post-meta-item-icon"><i class="far fa-calendar"></i></span> <span class="post-meta-item-text">发表于</span> <time title="创建时间：2020-01-21 20:18:38" itemprop="dateCreated datePublished" datetime="2020-01-21T20:18:38+08:00">2020-01-21</time></span><span class="post-meta-item"><span class="post-meta-item-icon"><i class="far fa-calendar-check"></i></span> <span class="post-meta-item-text">更新于</span> <time title="修改时间：2020-12-29 15:02:09" itemprop="dateModified" datetime="2020-12-29T15:02:09+08:00">2020-12-29</time></span><span id="/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/" class="post-meta-item leancloud_visitors" data-flag-title="2020-01-21-redis为什么要自己实现SDS" title="阅读次数"><span class="post-meta-item-icon"><i class="fa fa-eye"></i></span> <span class="post-meta-item-text">阅读次数：</span><span class="leancloud-visitors-count"></span></span><br><span class="post-meta-item" title="本文字数"><span class="post-meta-item-icon"><i class="far fa-file-word"></i></span> <span class="post-meta-item-text">本文字数：</span> <span>4.8k</span></span><span class="post-meta-item" title="阅读时长"><span class="post-meta-item-icon"><i class="far fa-clock"></i></span> <span class="post-meta-item-text">阅读时长 &asymp;</span> <span>4 分钟</span></span></div></header><div class="post-body" itemprop="articleBody"><h3 id="Redis-为什么要自己实现一个-SDS？"><a href="#Redis-为什么要自己实现一个-SDS？" class="headerlink" title="Redis 为什么要自己实现一个 SDS？"></a>Redis 为什么要自己实现一个 SDS？</h3><h4 id="原因一：SDS-获取字符串长度的时间复杂度比用-C-语言的字符数组实现的字符串要快"><a href="#原因一：SDS-获取字符串长度的时间复杂度比用-C-语言的字符数组实现的字符串要快" class="headerlink" title="原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快"></a>原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快</h4><p>用 C 的字符数组实现的字符串在获取字符串长度时需要遍历整个字符数组，然后把每个字符进行计数，直到遇到空字符（<code>&#39;\0&#39;</code> ） 才停止计数得出字符串的长度，这样的时间复杂度为 <code>O(N)</code></p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/486a41e3-fc8c-51b1-8012-673b9b65bed0.png" alt=""></p><p>而 SDS 在 <code>len</code> 属性中记录了字符串的长度，所以获取字符串的长度就相当于获取 <code>len</code> 的值，时间复杂度为 <code>O(1)</code></p><a id="more"></a><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//17e4cc89-1869-5162-a86d-a4521526be76.png" alt=""></p><h4 id="原因二：用-C-语言字符数组实现的字符串容易造成缓冲区溢出"><a href="#原因二：用-C-语言字符数组实现的字符串容易造成缓冲区溢出" class="headerlink" title="原因二：用 C 语言字符数组实现的字符串容易造成缓冲区溢出"></a>原因二：用 C 语言字符数组实现的字符串容易造成缓冲区溢出</h4><p><code>string.h</code> 库的 <code>strcat</code> 函数将 <code>src</code> 字符串中的类容拼接到 <code>dest</code> 字符串的末尾</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">char</span> *<span class="title">strcat</span><span class="params">(<span class="keyword">char</span> *dest, <span class="keyword">char</span> *src)</span></span>;</span><br></pre></td></tr></table></figure><p>因为用 C 语言的字符数组实现的字符串不记录自身的长度，所以假定用户在执行 <code>strcat</code> 函数时，已经为 <code>dest</code> 分配足够多的内存空间，则可以容纳 <code>src</code> 字符串的所有内容，而一旦这个假设不成立，就会产生内存溢出</p><p>举个例子， 假设程序里有两个在内存中紧邻着的 C 字符串 <code>s1</code> 和 <code>s2</code> ， 其中 <code>s1</code> 保存了字符串 <code>&quot;Redis&quot;</code> ， 而 <code>s2</code> 则保存了字符串 <code>&quot;MongoDB&quot;</code> ， 如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//6b53d401-6a33-5d9d-b3c3-d9fc2cf11344.png" alt=""></p><p>在这种情况下如果执行如下代码</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">strcat</span>(s1,<span class="string">&quot; Cluster&quot;</span>);</span><br></pre></td></tr></table></figure><p>在 <code>s1</code> 后面追加 <code>&quot; Cluster&quot;</code> ，但是<code>s1</code>的原有的空间不足，也未为 <code>s1</code> 重新分配足够的空间导致在执行 <code>strcat</code> 函数后 <code>s1</code> 的数据直接溢出到 <code>s2</code> 所在的内存空间中，最终导致 <code>s2</code> 的内容意外地被篡改，结果如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//fbd60a7d-1cd6-5380-8dda-765e517d2875.png" alt=""></p><p>而 SDS 和 C 语言实现的字符串不同，SDS API 对 SDS 进行修改时 API 会先检查 SDS 的空间是不是满足修改所需的要求，如果不满足，API 会自动将 SDS 的空间扩展到执行修改所需要的空间大小，然后再执行修改操作，所以使用 SDS 不需要手动修改 SDS 的空间大小也不会出现和 C 语言字符串那样的缓冲区溢出的问题</p><p>举个例子， SDS 的 API 里面也有一个用于执行拼接操作的 <code>sdscat</code> 函数， 它可以将一个 C 字符串拼接到给定 SDS 所保存的字符串的后面， 但是在执行拼接操作之前， <code>sdscat</code> 会先检查给定 SDS 的空间是否足够， 如果不够的话， <code>sdscat</code> 就会先扩展 SDS 的空间， 然后才执行拼接操作</p><p>比如说， 如果我们执行</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sdscat(s, <span class="string">&quot; Cluster&quot;</span>);</span><br></pre></td></tr></table></figure><p>SDS 的 <code>s</code> 的结构如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//5dfb78a7-5103-5fc5-8bbe-b84346a9a8c3.png" alt=""></p><p><code>sdscat</code>在执行拼接操作前会检查 <code>s</code> 的内存空间长度是否足够拼接 <code>&quot; Cluster&quot;</code> ，在发现 <code>s</code> 的空间长度不足够拼接 <code>&quot; Cluster&quot;</code> 后，会先扩展 <code>s</code> 的内存空间，然后再执行拼接操作，拼接后的 <code>s</code> 如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//8b5dceef-e0ca-523b-a431-1b73c23481d0.png" alt=""></p><p>并且 <code>sdscat</code> 这个函数不仅对这个 SDS 进行了拼接操作，还对 SDS 分配了 13 字节的未使用空间，并且拼接之后的字符串也正好是 13 个字节，这种现象和 SDS 的空间分配策略有关</p><h4 id="原因三：减少修改字符串时带来的内存重新分配次数"><a href="#原因三：减少修改字符串时带来的内存重新分配次数" class="headerlink" title="原因三：减少修改字符串时带来的内存重新分配次数"></a>原因三：减少修改字符串时带来的内存重新分配次数</h4><p>因为用 C 语言实现的字符串不记录自身的长度，所以对于一个包含 N 个字符的 C 语言字符串来说，这个 C 语言字符串的底层实现总是一个 N+1 长度的字符数组 （额外的一个字符用于保存空字符 <code>&#39;\0&#39;</code>)，因为 C 字符串和底层字符数组的这种关联性，所以每次缩短和增加字符串 C 语言实现的字符串时需要对实现 C 语言字符串的底层字符数组重新进行一次内存分配</p><ul><li><p>如果程序执行的是增长字符串的操作，那么在执行该操作之前需要先重新进行一次内存分配来扩展底层的字符数组，如果忘了会导致缓冲区溢出</p></li><li><p>如果程序执行的是缩短字符串的操作，那么在执行该操作之后需要重新进行一次内存分配释放那些不再使用的那部分空间，如果忘了会导致内存泄漏</p></li></ul><p>举个例子，如果要将一个值为 <code>&quot;Redis&quot;</code> 的 C 字符串 s 改为 <code>&quot;Redis Cluster&quot;</code>，在执行</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">strcat</span>(s,<span class="string">&quot; Cluster&quot;</span>);</span><br></pre></td></tr></table></figure><p>之前，我们需要先使用内存分配操作，扩展 s 空间</p><p>因为内存重新分配算法涉及复杂的算法，并且可能需要执行系统调用，所以它通常是一个比较耗时的操作，在一般程序中，如果修改字符串长度的情况不太常出现，那么每次修改都执行一次内存重新分配是可以接受的，但是 Redis 作为数据库，经常被用于速度要求严苛、数据被频繁修改的场合，如果每次修改字符串的长度都需要执行一次内存重新分配的话，那么光是执行的内存重新分配的时间就占去修改字符串所有时间的一部分，如果这种修改频繁的发生的话，可能会影响性能，所以 Redis 为了避免 C 字符串的这种缺陷，SDS 通过未使用空间解除了字符串长度和底层数组长度之间的关联，在 SDS 中，buf 数组的长度不一定是字符数量加一，数组中包含了未使用的字节，而这些未使用字节的数量就由 SDS 的 <code>free</code> 属性记录</p><p>通过未使用空间 SDS 实现了空间预分配和惰性空间释放着两个优化策略</p><h5 id="空间预分配"><a href="#空间预分配" class="headerlink" title="空间预分配"></a>空间预分配</h5><p>空间预分配用于优化 SDS 的字符串增长操作，当 SDS 的 API 需要对 SDS 进行修改并且这个修改需要扩展 SDS 的空间的时候，程序不仅会为 SDS 分配修改所需要的空间，还会为 SDS 分配额外的未使用空间</p><p>分配额外空间会根 z 据不同的的情况选择不同的策略，分配策略如下：</p><ul><li><p>如果对 SDS 进行修改之后，SDS 中 <code>len</code> 属性的值小于 <code>1</code> MB，这时程序会为 SDS 分配和 <code>len</code> 属性值一样大小的未使用空间，这时 <code>len</code> 的值和 <code>free</code> 的值是一样的，举个例子，SDS 进行扩展后， SDS 的 <code>len</code> 属性值为 <code>13</code> ，那么程序会为 SDS 分配和 <code>len</code> 属性值一样大小的 <code>13</code> 个字节的未使用空间 ，最终 <code>free</code> 的值为 <code>13</code> ，SDS 的 <code>buf</code> 数组的长度大小变为 <code>27</code> byte(13+13+1=27,额外的自字节用于保存空字符)</p></li><li><p>如果对 SDS 进行修改之后，SDS 的 <code>len</code> 属性的值大于等于 <code>1</code> MB，这是程序会为 SDS 分配 <code>1</code> MB 的未使用空间，举个例子，SDS 进行修改后，SDS 的 <code>len</code> 的值为<code>30</code>MB，那么程序会为 SDS 分配<code>1</code> MB 的未使用空间，最终 <code>free</code> 的值为 <code>1</code> MB ，SDS 的 <code>buf</code> 数组的长度大小变为 <code>30</code>MB + <code>1</code> MB + <code>1</code> byte</p></li></ul><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sdscat(s,<span class="string">&quot; Cluster&quot;</span>);</span><br></pre></td></tr></table></figure><p>在执行 <code>sdscat</code> 进行拼接之前需要检查 <code>s</code> 的长度是否足够，发现 <code>s</code> 的长度不够拼接 <code>&quot; Cluster&quot;</code>，<code>sdscat</code> 就会先扩展 <code>s</code> 的空间，然后才执行拼接 <code>&quot; Cluster&quot;</code>的操作</p><p>拼接前的 SDS 结构如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//5dfb78a7-5103-5fc5-8bbe-b84346a9a8c3.png" alt=""></p><p>拼接后的 SDS 的结构如下</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img//8b5dceef-e0ca-523b-a431-1b73c23481d0.png" alt=""></p><p>如果这时在对 <code>s</code> 进行如下操作</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sdscat(s,<span class="string">&quot; Tutorial&quot;</span>);</span><br></pre></td></tr></table></figure><p>那么这次 <code>sdscat</code> 执行的时候 就不需要重新分配内存，因为未使用空间里面的 <code>13</code> 个字节可以保存 <code>9</code> 个字节的 <code>&quot; Tutorial&quot;</code> ,函数执行完后的 SDS 的结构图如下</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/600c714b-f1aa-51e7-b3e2-41c9bebbd790.png" alt=""></p><p>在扩展 SDS 前会先检查 SDS 的 未使用空间是否已经足够扩展所需要的空间，如果未使用空间足够就直接使用未使用空间，而无需执行内存重新分配的操作，通过这种分配策略，SDS 将连续增长 N 次字符串所需的内存重新分配次数必定为 N 次减低为最多为 N 次</p><h5 id="惰性空间释放"><a href="#惰性空间释放" class="headerlink" title="惰性空间释放"></a>惰性空间释放</h5><p>惰性空间释放用于优化 SDS 的字符串缩短操作，当 SDS 的 API 需要缩短 SDS 保存的字符串时，程序并不立即使用内存重新分配来回收缩减多出来字节，而是使用 <code>free</code> 属性将这些字节的数量记录起来，并等待将来使用</p><p>举个例子，<code>sdstrim</code> 函数接受一个 SDS 和一个 C 字符串作为参数，从 SDS 左右两端分别移除所有在 C 字符串中出现过的字符串</p><p>如下面对 SDS 值 s 执行 <code>sdstrim</code></p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sdstrim(s,<span class="string">&quot;XY&quot;</span>); <span class="comment">// 移除 SDS 字符串中的所有 &#x27;X&#x27; 和 &#x27;Y&#x27;</span></span><br></pre></td></tr></table></figure><p>执行字符串缩减前的 SDS 如下</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/63d24217-4e56-4f58-a7c0-ff90a4b2e73a.png" alt=""></p><p>执行 <code>sdstrim</code> 对 SDS 值 <code>s</code> 进行缩减后的结构图如下</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/636d5b62-c44f-5c9a-a5f4-b4d32befb844.png" alt=""></p><p>注意执行 <code>sdstrim</code> 之后的 SDS 并没有释放多出来的 <code>8</code> 个字节的空间，而是将这 <code>8</code> 个字节空间作为未使用的空间保留在 SDS 中，如果将要对 SDS 进行增长操作的话，这些未使用空间就可能派上用场</p><p>举个例子，对上面执行完 <code>sdstrim</code> 操作后的 <code>s</code> 执行 <code>sdscat</code> 操作增长操作</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sdscat(s,<span class="string">&quot; Redis&quot;</span>);</span><br></pre></td></tr></table></figure><p>那么完成这次 <code>sdscat</code> 操作将不需要执行内存分配因为 SDS 里面预留的 <code>8</code> 个字节的空间已经足以拼接 <code>6</code> 个字节的 <code>&quot; Redis&quot;</code> ，拼接后的结构图如下</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/2809aa3e-8279-571c-b030-8c75e1e77f2d.png" alt=""></p><p>通过惰性空间分配释放策略，SDS 避免了缩短字符串是所需要的内存重新分配操作，并且将来可能为增长操作提供优化</p><p>与此同时，SDS 也提供了相应的 API ,让我们可以在需要的时候，真正的释放 SDS 里面的未使用空间，所以不需要担心惰性空间策略造成的内存浪费</p><h4 id="原因四：二进制安全"><a href="#原因四：二进制安全" class="headerlink" title="原因四：二进制安全"></a>原因四：二进制安全</h4><p>C 语言字符串中的字符必须符合某种编码（比如 ASCII）,并且出了字符串的末尾之外，字符串的其他地方不能包含空字符（<code>&#39;\0&#39;</code> ），否者最先被程序读入的空字符串会被误认为字符串的结尾，这样导致了 C 语言字符串自能保存文本，不能保存图片、音频、视频、压缩文件这样的二进制数据</p><p>举个例子，如果有一个使用空字符分割多个单词的特殊数据格式，结构如下图，那么这种格式就不适合用 C 字符串保存，因为 C 字符串的函数只能识别出空字符（<code>&#39;\0&#39;</code> ）前面的 <code>Redis</code> 而它后面的 <code>&quot;Cluster&quot;</code></p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/4f7dab93-d3df-5066-b3c7-0d7779acaa4d.png" alt=""></p><p>虽然数据库一般保存的是文本数据，但是使用数据库保存二进制数据的场景也不少见，因此，为了确保 Redis 可以适用于各种不同的使用场景，SDS 的 API 都是二进制安全的：所有的 SDS API 都会处理二进制的方式处理 SDS 存在 <code>buf</code> 数组中的数据，数据写入的时候是上面样的，它读出来就是上面样的</p><p>这就是我们为什么将 SDS 的 <code>buf</code> 属性称为字节数组的原因，因为 Redis 不用这个数组保存字符，而是用来保存一系列的二进制数据</p><p>所以使用 SDS 保存上面提到的特殊格式的字符串是没有任何问题，因为 SDS 时使用 <code>len</code> 属性来判断字符串是否结束的，如下图</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/24d91093-b1f8-551e-8c3d-771d65061f87.png" alt=""></p><p>通过使用二进制安全的 SDS ，而不是 C 字符串，使得 SDS 不仅可以保存文本数据，还可以保存任意格式的二进制数据</p><h4 id="原因五：兼容部分-C-语言字符串函数"><a href="#原因五：兼容部分-C-语言字符串函数" class="headerlink" title="原因五：兼容部分 C 语言字符串函数"></a>原因五：兼容部分 C 语言字符串函数</h4><p>虽然 SDS 的 API 都是二进制安全的，但是还是遵循 C 字符串以空字符为结尾的惯例，这些 API 总是将 SDS 保存的数据的尾部设置为空字符，并且总会为 <code>buf</code> 数组分配一个额外的字节空间容纳这个空字符，这是为了让那些保存文本数据的 SDS 可以重用一部分的 <code>&lt;string.h&gt;</code> 库定义的函数</p><p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/5c7f5e8b-0a9e-5f63-8236-1b39eddd9caf.png" alt=""></p><p>举个例子，如上图所示，如果我们有一个保存文本数据的 SDS 值的 <code>sds</code>，那么我们有可以重用 <code>&lt;string.h&gt;/strcasecmp</code> 函数，使用它来对比 SDS 保存字符串和另一个 C 字符串</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">strcasecmp(sds-&gt;buf,<span class="string">&quot;Hello World&quot;</span>);</span><br></pre></td></tr></table></figure><p>这样 Redis 就是不用专门编写一个用来对比 SDS 值和 C 字符串值的函数</p><p>类似的我们可以将一个保存了数据的 SDS 作为 <code>strcat</code> 函数的第二个参数，将 SDS 保存的字符串追加到一个 C 字符串的后面</p><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">strcat</span>(c_string,sds-&gt;buf);</span><br></pre></td></tr></table></figure><p>这样 Redis 就不用专门去写一个函数来将 SDS 保存的字符串追加到 C 字符串后面</p><p>通过遵循 C 字符串以空字符结尾的惯例， SDS 可以在有需要时重用 `` 函数库， 从而避免了不必要的代码重复</p><h4 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h4><div class="table-container"><table><thead><tr><th style="text-align:center">C 语言字符串</th><th style="text-align:center">SDS</th></tr></thead><tbody><tr><td style="text-align:center">获取字符串长度的时间复杂度为 <code>O(N)</code></td><td style="text-align:center">获取字符串长度的复杂度为<code>O(1)</code></td></tr><tr><td style="text-align:center">API 是不安全的，可能会造成缓冲区溢出</td><td style="text-align:center">API 是安全的，不会造成缓冲区溢出</td></tr><tr><td style="text-align:center">修改字符串长度 N 次必然需要执行 N 次内存重新分配</td><td style="text-align:center">修改字符串 N 次最多需要执行 N 次内存重新分配</td></tr><tr><td style="text-align:center">只能保存文本数据</td><td style="text-align:center">可以保存文本或者二进制数据</td></tr><tr><td style="text-align:center">可以使用所有 <code>&lt;string.h&gt;</code> 库中的函数</td><td style="text-align:center">可使用部分 <code>&lt;stringh</code> 库中的部分函数</td></tr></tbody></table></div></div><footer class="post-footer"><div class="post-tags"><a href="/tags/redis/" rel="tag"><i class="fa fa-tag"></i> redis</a></div><div class="post-nav"><div class="post-nav-item"><a href="/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself/" rel="prev" title="2020-01-21-redis为什么要自己实现SDS"><i class="fa fa-chevron-left"></i> 2020-01-21-redis为什么要自己实现SDS</a></div><div class="post-nav-item"></div></div></footer></article></div><script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script></div><div class="toggle sidebar-toggle"><span class="toggle-line toggle-line-first"></span><span class="toggle-line toggle-line-middle"></span><span class="toggle-line toggle-line-last"></span></div><aside class="sidebar"><div class="sidebar-inner"><ul class="sidebar-nav motion-element"><li class="sidebar-nav-toc"> 文章目录</li><li class="sidebar-nav-overview"> 站点概览</li></ul><div class="post-toc-wrap sidebar-panel"><div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#Redis-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E8%87%AA%E5%B7%B1%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA-SDS%EF%BC%9F"><span class="nav-number">1.</span> <span class="nav-text">Redis 为什么要自己实现一个 SDS？</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%9B%A0%E4%B8%80%EF%BC%9ASDS-%E8%8E%B7%E5%8F%96%E5%AD%97%E7%AC%A6%E4%B8%B2%E9%95%BF%E5%BA%A6%E7%9A%84%E6%97%B6%E9%97%B4%E5%A4%8D%E6%9D%82%E5%BA%A6%E6%AF%94%E7%94%A8-C-%E8%AF%AD%E8%A8%80%E7%9A%84%E5%AD%97%E7%AC%A6%E6%95%B0%E7%BB%84%E5%AE%9E%E7%8E%B0%E7%9A%84%E5%AD%97%E7%AC%A6%E4%B8%B2%E8%A6%81%E5%BF%AB"><span class="nav-number">1.1.</span> <span class="nav-text">原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%9B%A0%E4%BA%8C%EF%BC%9A%E7%94%A8-C-%E8%AF%AD%E8%A8%80%E5%AD%97%E7%AC%A6%E6%95%B0%E7%BB%84%E5%AE%9E%E7%8E%B0%E7%9A%84%E5%AD%97%E7%AC%A6%E4%B8%B2%E5%AE%B9%E6%98%93%E9%80%A0%E6%88%90%E7%BC%93%E5%86%B2%E5%8C%BA%E6%BA%A2%E5%87%BA"><span class="nav-number">1.2.</span> <span class="nav-text">原因二：用 C 语言字符数组实现的字符串容易造成缓冲区溢出</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%9B%A0%E4%B8%89%EF%BC%9A%E5%87%8F%E5%B0%91%E4%BF%AE%E6%94%B9%E5%AD%97%E7%AC%A6%E4%B8%B2%E6%97%B6%E5%B8%A6%E6%9D%A5%E7%9A%84%E5%86%85%E5%AD%98%E9%87%8D%E6%96%B0%E5%88%86%E9%85%8D%E6%AC%A1%E6%95%B0"><span class="nav-number">1.3.</span> <span class="nav-text">原因三：减少修改字符串时带来的内存重新分配次数</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E7%A9%BA%E9%97%B4%E9%A2%84%E5%88%86%E9%85%8D"><span class="nav-number">1.3.1.</span> <span class="nav-text">空间预分配</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%83%B0%E6%80%A7%E7%A9%BA%E9%97%B4%E9%87%8A%E6%94%BE"><span class="nav-number">1.3.2.</span> <span class="nav-text">惰性空间释放</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%9B%A0%E5%9B%9B%EF%BC%9A%E4%BA%8C%E8%BF%9B%E5%88%B6%E5%AE%89%E5%85%A8"><span class="nav-number">1.4.</span> <span class="nav-text">原因四：二进制安全</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8E%9F%E5%9B%A0%E4%BA%94%EF%BC%9A%E5%85%BC%E5%AE%B9%E9%83%A8%E5%88%86-C-%E8%AF%AD%E8%A8%80%E5%AD%97%E7%AC%A6%E4%B8%B2%E5%87%BD%E6%95%B0"><span class="nav-number">1.5.</span> <span class="nav-text">原因五：兼容部分 C 语言字符串函数</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">1.6.</span> <span class="nav-text">总结</span></a></li></ol></li></ol></div></div><div class="site-overview-wrap sidebar-panel"><div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person"> <img class="site-author-image" itemprop="image" alt="ouzhanbo" src="/images/avatar.png"><p class="site-author-name" itemprop="name">ouzhanbo</p><div class="site-description" itemprop="description">好烦想辞职</div></div><div class="site-state-wrap motion-element"><nav class="site-state"><div class="site-state-item site-state-posts"> <a href="/archives/"><span class="site-state-item-count">3</span> <span class="site-state-item-name">日志</span></a></div><div class="site-state-item site-state-categories"> <a href="/categories/"><span class="site-state-item-count">4</span> <span class="site-state-item-name">分类</span></a></div><div class="site-state-item site-state-tags"> <a href="/tags/"><span class="site-state-item-count">1</span> <span class="site-state-item-name">标签</span></a></div></nav></div><div class="links-of-author motion-element"><span class="links-of-author-item"><a href="https://github.com/OUZHANBO" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;OUZHANBO" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i> GitHub</a></span><span class="links-of-author-item"><a href="mailto:yuzai1435701781@gmail.com" title="E-Mail → mailto:yuzai1435701781@gmail.com" rel="noopener" target="_blank"><i class="fa fa-envelope fa-fw"></i> E-Mail</a></span></div><div class="links-of-blogroll motion-element"><div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i> Links</div><ul class="links-of-blogroll-list"><li class="links-of-blogroll-item"> <a href="http://ouzhanbo.top/" title="http:&#x2F;&#x2F;ouzhanbo.top" rel="noopener" target="_blank">Title</a></li></ul></div></div></div></aside><div id="sidebar-dimmer"></div></div></main><footer class="footer"><div class="footer-inner"><div class="beian"><a href="https://beian.miit.gov.cn/" rel="noopener" target="_blank">粤ICP备20010439号-1</a></div><div class="copyright"> &copy; 2019 – <span itemprop="copyrightYear">2020</span><span class="with-love"><i class="fa fa-heart"></i></span> <span class="author" itemprop="copyrightHolder">ouzhanbo</span> <span class="post-meta-divider">|</span><span class="post-meta-item-icon"><i class="fa fa-chart-area"></i></span> <span title="站点总字数">10k</span> <span class="post-meta-divider">|</span><span class="post-meta-item-icon"><i class="fa fa-coffee"></i></span> <span title="站点阅读时长">9 分钟</span></div><script data-pjax>
+  (function() {
+    function leancloudSelector(url) {
+      url = encodeURI(url);
+      return document.getElementById(url).querySelector('.leancloud-visitors-count');
+    }
+
+    function addCount(Counter) {
+      var visitors = document.querySelector('.leancloud_visitors');
+      var url = decodeURI(visitors.id);
+      var title = visitors.dataset.flagTitle;
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          if (results.length > 0) {
+            var counter = results[0];
+            leancloudSelector(url).innerText = counter.time + 1;
+            Counter('put', '/classes/Counter/' + counter.objectId, { time: { '__op': 'Increment', 'amount': 1 } })
+              .catch(error => {
+                console.error('Failed to save visitor count', error);
+              });
+          } else {
+              leancloudSelector(url).innerText = 'Counter not initialized! More info at console err msg.';
+              console.error('ATTENTION! LeanCloud counter has security bug, see how to solve it here: https://github.com/theme-next/hexo-leancloud-counter-security. \n However, you can still use LeanCloud without security, by setting `security` option to `false`.');
+            
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    function showTime(Counter) {
+      var visitors = document.querySelectorAll('.leancloud_visitors');
+      var entries = [...visitors].map(element => {
+        return decodeURI(element.id);
+      });
+
+      Counter('get', '/classes/Counter?where=' + encodeURIComponent(JSON.stringify({ url: { '$in': entries } })))
+        .then(response => response.json())
+        .then(({ results }) => {
+          for (let url of entries) {
+            let target = results.find(item => item.url === url);
+            leancloudSelector(url).innerText = target ? target.time : 0;
+          }
+        })
+        .catch(error => {
+          console.error('LeanCloud Counter Error', error);
+        });
+    }
+
+    let { app_id, app_key, server_url } = {"enable":true,"app_id":"sBUO2058eUeaRTdJucH2CiIa-gzGzoHsz","app_key":"To6zTSEcm2w9Di9OW0DRq800","server_url":null,"security":true};
+    function fetchData(api_server) {
+      var Counter = (method, url, data) => {
+        return fetch(`${api_server}/1.1${url}`, {
+          method,
+          headers: {
+            'X-LC-Id'     : app_id,
+            'X-LC-Key'    : app_key,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+      if (CONFIG.page.isPost) {
+        if (CONFIG.hostname !== location.hostname) return;
+        addCount(Counter);
+      } else if (document.querySelectorAll('.post-title-link').length >= 1) {
+        showTime(Counter);
+      }
+    }
+
+    let api_server = app_id.slice(-9) !== '-MdYXbMMI' ? server_url : `https://${app_id.slice(0, 8).toLowerCase()}.api.lncldglobal.com`;
+
+    if (api_server) {
+      fetchData(api_server);
+    } else {
+      fetch('https://app-router.leancloud.cn/2/route?appId=' + app_id)
+        .then(response => response.json())
+        .then(({ api_server }) => {
+          fetchData('https://' + api_server);
+        });
+    }
+  })();
+</script></div></footer></div><script src="/lib/anime.min.js"></script><script src="//cdn.jsdelivr.net/gh/theme-next/theme-next-pjax@0/pjax.min.js"></script><script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script><script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script><script src="//cdn.jsdelivr.net/npm/medium-zoom@1/dist/medium-zoom.min.js"></script><script src="//cdn.jsdelivr.net/npm/pangu@4/dist/browser/pangu.min.js"></script><script src="/lib/velocity/velocity.min.js"></script><script src="/lib/velocity/velocity.ui.min.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/pisces.js"></script><script src="/js/next-boot.js"></script><script src="/js/bookmark.js"></script><script>
+var pjax = new Pjax({
+  selectors: [
+    'head title',
+    '#page-configurations',
+    '.content-wrap',
+    '.post-toc-wrap',
+    '.languages',
+    '#pjax'
+  ],
+  switches: {
+    '.post-toc-wrap': Pjax.switches.innerHTML
+  },
+  analytics: false,
+  cacheBust: false,
+  scrollTo : !CONFIG.bookmark.enable
+});
+
+window.addEventListener('pjax:success', () => {
+  document.querySelectorAll('script[data-pjax], script#page-configurations, #pjax script').forEach(element => {
+    var code = element.text || element.textContent || element.innerHTML || '';
+    var parent = element.parentNode;
+    parent.removeChild(element);
+    var script = document.createElement('script');
+    if (element.id) {
+      script.id = element.id;
+    }
+    if (element.className) {
+      script.className = element.className;
+    }
+    if (element.type) {
+      script.type = element.type;
+    }
+    if (element.src) {
+      script.src = element.src;
+      // Force synchronous loading of peripheral JS.
+      script.async = false;
+    }
+    if (element.dataset.pjax !== undefined) {
+      script.dataset.pjax = '';
+    }
+    if (code !== '') {
+      script.appendChild(document.createTextNode(code));
+    }
+    parent.appendChild(script);
+  });
+  NexT.boot.refresh();
+  // Define Motion Sequence & Bootstrap Motion.
+  if (CONFIG.motion.enable) {
+    NexT.motion.integrator
+      .init()
+      .add(NexT.motion.middleWares.subMenu)
+      .add(NexT.motion.middleWares.postList)
+      .bootstrap();
+  }
+  NexT.utils.updateSidebarPosition();
+});
+</script><script src="/js/local-search.js"></script><div id="pjax"><script>
+  if (typeof MathJax === 'undefined') {
+    window.MathJax = {
+      loader: {
+          load: ['[tex]/mhchem'],
+        source: {
+          '[tex]/amsCd': '[tex]/amscd',
+          '[tex]/AMScd': '[tex]/amscd'
+        }
+      },
+      tex: {
+        inlineMath: {'[+]': [['$', '$']]},
+          packages: {'[+]': ['mhchem']},
+        tags: 'ams'
+      },
+      options: {
+        renderActions: {
+          findScript: [10, doc => {
+            document.querySelectorAll('script[type^="math/tex"]').forEach(node => {
+              const display = !!node.type.match(/; *mode=display/);
+              const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display);
+              const text = document.createTextNode('');
+              node.parentNode.replaceChild(text, node);
+              math.start = {node: text, delim: '', n: 0};
+              math.end = {node: text, delim: '', n: 0};
+              doc.math.push(math);
+            });
+          }, '', false],
+          insertedScript: [200, () => {
+            document.querySelectorAll('mjx-container').forEach(node => {
+              let target = node.parentNode;
+              if (target.nodeName.toLowerCase() === 'li') {
+                target.parentNode.classList.add('has-jax');
+              }
+            });
+          }, '', false]
+        }
+      }
+    };
+    (function () {
+      var script = document.createElement('script');
+      script.src = '//cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.defer = true;
+      document.head.appendChild(script);
+    })();
+  } else {
+    MathJax.startup.document.state(0);
+    MathJax.texReset();
+    MathJax.typeset();
+  }
+</script><script src="//cdn.jsdelivr.net/npm/quicklink@1/dist/quicklink.umd.js"></script><script>
+      window.addEventListener('load', () => {
+      quicklink({
+        timeout : 3000,
+        priority: true,
+        ignores : [uri => uri.includes('#'),uri => uri === 'http://ouzhanbo.github.io/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/',]
+      });
+      });
+  </script></div><script src="/live2dw/lib/L2Dwidget.min.js?094cbace49a39548bed64abff5988b05"></script><script>L2Dwidget.init({pluginRootPath:"live2dw/",pluginJsPath:"lib/",pluginModelPath:"assets/",tagMode:!1,log:!1,model:{jsonPath:"/live2dw/assets/wanko.model.json"},display:{position:"left",width:150,height:300},mobile:{show:!0}})</script></body></html>
