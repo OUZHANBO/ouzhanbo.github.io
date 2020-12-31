@@ -1,20 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
-    <title>好烦</title>
-    <url>/2019/12/05/test/</url>
-    <content><![CDATA[]]></content>
-      <categories>
-        <category>分类1</category>
-        <category>分类4</category>
-        <category>分类2</category>
-        <category>分类3</category>
-      </categories>
-      <tags>
-        <tag>redis</tag>
-      </tags>
-  </entry>
-  <entry>
     <title>2020-01-21-redis为什么要自己实现SDS</title>
     <url>/2020/01/21/2020-01-21-Why-did-redis-implement-SDS-by-itself%20copy/</url>
     <content><![CDATA[<h3 id="Redis-为什么要自己实现一个-SDS？"><a href="#Redis-为什么要自己实现一个-SDS？" class="headerlink" title="Redis 为什么要自己实现一个 SDS？"></a>Redis 为什么要自己实现一个 SDS？</h3><h4 id="原因一：SDS-获取字符串长度的时间复杂度比用-C-语言的字符数组实现的字符串要快"><a href="#原因一：SDS-获取字符串长度的时间复杂度比用-C-语言的字符数组实现的字符串要快" class="headerlink" title="原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快"></a>原因一：SDS 获取字符串长度的时间复杂度比用 C 语言的字符数组实现的字符串要快</h4><p>用 C 的字符数组实现的字符串在获取字符串长度时需要遍历整个字符数组，然后把每个字符进行计数，直到遇到空字符（<code>&#39;\0&#39;</code> ） 才停止计数得出字符串的长度，这样的时间复杂度为 <code>O(N)</code></p>
@@ -262,6 +248,20 @@
 </table>
 </div>
 ]]></content>
+      <tags>
+        <tag>redis</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>好烦</title>
+    <url>/2019/12/05/test/</url>
+    <content><![CDATA[]]></content>
+      <categories>
+        <category>分类1</category>
+        <category>分类4</category>
+        <category>分类2</category>
+        <category>分类3</category>
+      </categories>
       <tags>
         <tag>redis</tag>
       </tags>
