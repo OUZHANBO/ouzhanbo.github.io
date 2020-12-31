@@ -127,7 +127,7 @@
       </tags>
   </entry>
   <entry>
-    <title>2020-01-21-redis为什么要自己实现SDS</title>
+    <title>2020-01-21-Redis 字典 dict 要定义两个哈希表的原因</title>
     <url>/2020/01/21/Redis%20%E5%AD%97%E5%85%B8%20dict%20%E8%A6%81%E5%AE%9A%E4%B9%89%E4%B8%A4%E4%B8%AA%E5%93%88%E5%B8%8C%E8%A1%A8%E7%9A%84%E5%8E%9F%E5%9B%A0/</url>
     <content><![CDATA[<h3 id="Redis-字典-dict-要定义两个哈希表的原因"><a href="#Redis-字典-dict-要定义两个哈希表的原因" class="headerlink" title="Redis 字典 dict 要定义两个哈希表的原因"></a>Redis 字典 dict 要定义两个哈希表的原因</h3><p>Redis 字典 dict 定义两个哈希表是为了给哈希表进行扩展或者收缩准备的</p>
 <h3 id="为什么-Redis-字典-dict-中的哈希表要扩展或者收缩"><a href="#为什么-Redis-字典-dict-中的哈希表要扩展或者收缩" class="headerlink" title="为什么 Redis 字典 dict 中的哈希表要扩展或者收缩"></a>为什么 Redis 字典 dict 中的哈希表要扩展或者收缩</h3><p>因为随着操作的不断执行，哈希表保存的键值对的逐渐增加或者减少，为了让哈希表负载因子（load factor）维持在一个合理的范围之内，当哈希表保存的键值对过多或者过少时，程序需要对哈希表的大小执行相应的扩展或者收缩</p>
@@ -171,7 +171,7 @@
       </tags>
   </entry>
   <entry>
-    <title>2020-01-21-redis为什么要自己实现SDS</title>
+    <title>2020-01-21-关键字声明的变量的加载问题</title>
     <url>/2020/01/21/static%20%E5%85%B3%E9%94%AE%E5%AD%97%E5%A3%B0%E6%98%8E%E7%9A%84%E5%8F%98%E9%87%8F%E7%9A%84%E5%8A%A0%E8%BD%BD%E9%97%AE%E9%A2%98/</url>
     <content><![CDATA[<h3 id="static-关键字声明的变量的加载机制"><a href="#static-关键字声明的变量的加载机制" class="headerlink" title="static 关键字声明的变量的加载机制"></a>static 关键字声明的变量的加载机制</h3><p>前段时间在学习单例模式的时候遇到一种写法事用静态内部类来实现的，发现自己不是很懂静态内部类的加载时序，后来衍生到了 static 关键字修饰的变量方法都不是很懂，在网上找了一些文章看了下，大概明白他们的加载的机制和时序，下面来说下。之前我知道类的静态变量会在类被加载的时候初始化，但是类什么时候会被加载呢，这个我之前都没有考虑过。以下是我觉得我平时用得比较多的类加载方式：</p>
 <p>​ 1.调用类的静态变量或者静态方法</p>
