@@ -127,8 +127,52 @@
       </tags>
   </entry>
   <entry>
+    <title>2020-01-21-Redis 字典 dict 要定义两个哈希表的原因</title>
+    <url>/2020/01/21/Redis%20%E5%AD%97%E5%85%B8%20dict%20%E8%A6%81%E5%AE%9A%E4%B9%89%E4%B8%A4%E4%B8%AA%E5%93%88%E5%B8%8C%E8%A1%A8%E7%9A%84%E5%8E%9F%E5%9B%A0/</url>
+    <content><![CDATA[<h3 id="Redis-字典-dict-要定义两个哈希表的原因"><a href="#Redis-字典-dict-要定义两个哈希表的原因" class="headerlink" title="Redis 字典 dict 要定义两个哈希表的原因"></a>Redis 字典 dict 要定义两个哈希表的原因</h3><p>Redis 字典 dict 定义两个哈希表是为了给哈希表进行扩展或者收缩准备的</p>
+<h3 id="为什么-Redis-字典-dict-中的哈希表要扩展或者收缩"><a href="#为什么-Redis-字典-dict-中的哈希表要扩展或者收缩" class="headerlink" title="为什么 Redis 字典 dict 中的哈希表要扩展或者收缩"></a>为什么 Redis 字典 dict 中的哈希表要扩展或者收缩</h3><p>因为随着操作的不断执行，哈希表保存的键值对的逐渐增加或者减少，为了让哈希表负载因子（load factor）维持在一个合理的范围之内，当哈希表保存的键值对过多或者过少时，程序需要对哈希表的大小执行相应的扩展或者收缩</p>
+<h3 id="Redis-字典-dict-如何实现哈希表的扩展和收缩"><a href="#Redis-字典-dict-如何实现哈希表的扩展和收缩" class="headerlink" title="Redis 字典 dict 如何实现哈希表的扩展和收缩"></a>Redis 字典 dict 如何实现哈希表的扩展和收缩</h3><p>扩张和收缩哈希表的工作是通过执行 rehash （重新散列）操作来完成，Redis 对字典 dict 的哈希表执行 rehash 的步骤如下：</p>
+<ol>
+<li>为字典的 ht[1] 哈希表分配空间，这个哈希表的空间大小取决于要执行的操作是扩展还是收缩决，以及 ht[0] 包含键值对的数量 （ht[0].used 的值）：<ul>
+<li>如果执行的是扩展操作，那么 ht[1] 的大小为第一个大于等于 ht[0].used * 2 的 2 ^ n （2 的 n 次方幂）</li>
+<li>如果执行的是收缩操作，那么 ht[1] 的大小为第一个大于等于 ht[0].used 的 2 ^ n</li>
+</ul>
+</li>
+<li>将保存在 ht[0] 中的所有键值对 rehash 到 ht[1] 上面：rehash 指的是重新计算键的哈希值和索引值，然后将键值对放置到 ht[1] 哈希表中索引值对应位置上</li>
+<li>当 ht[0] 包含的所有键值对都迁移到了 ht[1] 之后（ht[0] 变为空表），释放 ht[0] ，将 ht[1] 设置为 ht[0] ，并在 ht[1] 新创建一个空白哈希表，为下一次 rehash 做准备</li>
+</ol>
+<a id="more"></a>
+<p>举个例子，假设程序要对下图所示的字典的 ht[0] 进行扩展操作，那么程序执行以下步骤：</p>
+<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/1abf039c-703b-5fde-b67f-c97fe9e3273b.png" alt="图片丢失" title="图1"></p>
+<ol>
+<li><p>ht[0].used 当前的值为 4， 4 * 2 = 8 ，而 8 （2 ^ 3） 恰好是第一个大于等于 8 的 2 的 n 次方，所以程序会将 ht[1] 哈希表的大小设置为 8，下图是为 ht[1] 在分配空间之后字典的样子</p>
+<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/5fbf2db9-21a4-50b7-9dbd-3f78db2da4de.png" alt="图片丢失" title="图2"></p>
+</li>
+<li><p>将保存在 ht[0] 包含的四个键值对都 rehash 到 ht[1]，如下图</p>
+<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/31ed5ffe-6b5e-5d6d-bfbb-53899e9c5ad9.png" alt="图片丢失" title="图3"></p>
+</li>
+<li><p>释放 ht[0]，并将 ht[1] 设置为 ht[0]，然后为 ht[1] 分配一个空白的哈希表，如下图</p>
+<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/cb035281-bd11-5778-96e9-c3699b427ea2.png" alt="图片丢失" title="图4"></p>
+</li>
+</ol>
+<p>到此，对哈希表的扩张操作执行完毕，程序成功将哈希表的大小从原来的 4 扩展为 8</p>
+<h3 id="哈希表扩展和收缩的触发条件"><a href="#哈希表扩展和收缩的触发条件" class="headerlink" title="哈希表扩展和收缩的触发条件"></a>哈希表扩展和收缩的触发条件</h3><h4 id="哈希表扩展"><a href="#哈希表扩展" class="headerlink" title="哈希表扩展"></a>哈希表扩展</h4><p>当以下条件中的任意一个被满足时，程序和自动开始对哈希表执行扩展</p>
+<ol>
+<li>服务器目前没有执行 BGSAVE 或者 BGREWRITEAOF 命令，并且哈希表的负载因子大于等于 1；</li>
+<li>服务器目前正在执行 BGSAVE 或者 BGREWRITEAOF 命令，并且哈希表的负载因子大于等于 5；</li>
+</ol>
+<h4 id="哈希表的收缩"><a href="#哈希表的收缩" class="headerlink" title="哈希表的收缩"></a>哈希表的收缩</h4><p>当哈希表的负载因子小于 0.1 时，程序会自动开始对哈希表进行收缩</p>
+<p>哈希表的负载因子的计算公式如下：</p>
+<figure class="highlight c"><table><tr><td class="code"><pre><span class="line">load_factor = ht[<span class="number">0</span>].used / ht[<span class="number">0</span>].size</span><br></pre></td></tr></table></figure>
+<p>根据 BGSAVE 命令或者 BGREWRITEAOF 命令是否正在执行，服务器执行执行操作所需的负载因子并不相同，这是因为正在执行 BGSAVE 或者 BGREWRITEAOF 命令的过程中，Redis 需要创建当前服务进程的子进程，而大多数操作系统都采用写时复制技术来优化进程的使用效率，所以子进程存在的期间，服务器会提高执行扩展操作所需要的负载因子，从而尽量地避免在子进程存在期间进行哈希表扩展操作，这可以避免不必要的内存写入操作，最大限度地节约内存</p>
+]]></content>
+      <tags>
+        <tag>redis</tag>
+      </tags>
+  </entry>
+  <entry>
     <title>2020-01-21-关键字声明的变量的加载问题</title>
-    <url>/2020/01/21/static%20%E5%85%B3%E9%94%AE%E5%AD%97%E5%A3%B0%E6%98%8E%E7%9A%84%E5%8F%98%E9%87%8F%E7%9A%84%E5%8A%A0%E8%BD%BD%E9%97%AE%E9%A2%98/</url>
+    <url>/2020/01/20/static%20%E5%85%B3%E9%94%AE%E5%AD%97%E5%A3%B0%E6%98%8E%E7%9A%84%E5%8F%98%E9%87%8F%E7%9A%84%E5%8A%A0%E8%BD%BD%E9%97%AE%E9%A2%98/</url>
     <content><![CDATA[<h3 id="static-关键字声明的变量的加载机制"><a href="#static-关键字声明的变量的加载机制" class="headerlink" title="static 关键字声明的变量的加载机制"></a>static 关键字声明的变量的加载机制</h3><p>前段时间在学习单例模式的时候遇到一种写法事用静态内部类来实现的，发现自己不是很懂静态内部类的加载时序，后来衍生到了 static 关键字修饰的变量方法都不是很懂，在网上找了一些文章看了下，大概明白他们的加载的机制和时序，下面来说下。之前我知道类的静态变量会在类被加载的时候初始化，但是类什么时候会被加载呢，这个我之前都没有考虑过。以下是我觉得我平时用得比较多的类加载方式：</p>
 <p>​ 1.调用类的静态变量或者静态方法</p>
 <p>​ 2.new 一个类的对象</p>
@@ -206,50 +250,6 @@
 ]]></content>
       <tags>
         <tag>java</tag>
-      </tags>
-  </entry>
-  <entry>
-    <title>2020-01-21-Redis 字典 dict 要定义两个哈希表的原因</title>
-    <url>/2020/01/21/Redis%20%E5%AD%97%E5%85%B8%20dict%20%E8%A6%81%E5%AE%9A%E4%B9%89%E4%B8%A4%E4%B8%AA%E5%93%88%E5%B8%8C%E8%A1%A8%E7%9A%84%E5%8E%9F%E5%9B%A0/</url>
-    <content><![CDATA[<h3 id="Redis-字典-dict-要定义两个哈希表的原因"><a href="#Redis-字典-dict-要定义两个哈希表的原因" class="headerlink" title="Redis 字典 dict 要定义两个哈希表的原因"></a>Redis 字典 dict 要定义两个哈希表的原因</h3><p>Redis 字典 dict 定义两个哈希表是为了给哈希表进行扩展或者收缩准备的</p>
-<h3 id="为什么-Redis-字典-dict-中的哈希表要扩展或者收缩"><a href="#为什么-Redis-字典-dict-中的哈希表要扩展或者收缩" class="headerlink" title="为什么 Redis 字典 dict 中的哈希表要扩展或者收缩"></a>为什么 Redis 字典 dict 中的哈希表要扩展或者收缩</h3><p>因为随着操作的不断执行，哈希表保存的键值对的逐渐增加或者减少，为了让哈希表负载因子（load factor）维持在一个合理的范围之内，当哈希表保存的键值对过多或者过少时，程序需要对哈希表的大小执行相应的扩展或者收缩</p>
-<h3 id="Redis-字典-dict-如何实现哈希表的扩展和收缩"><a href="#Redis-字典-dict-如何实现哈希表的扩展和收缩" class="headerlink" title="Redis 字典 dict 如何实现哈希表的扩展和收缩"></a>Redis 字典 dict 如何实现哈希表的扩展和收缩</h3><p>扩张和收缩哈希表的工作是通过执行 rehash （重新散列）操作来完成，Redis 对字典 dict 的哈希表执行 rehash 的步骤如下：</p>
-<ol>
-<li>为字典的 ht[1] 哈希表分配空间，这个哈希表的空间大小取决于要执行的操作是扩展还是收缩决，以及 ht[0] 包含键值对的数量 （ht[0].used 的值）：<ul>
-<li>如果执行的是扩展操作，那么 ht[1] 的大小为第一个大于等于 ht[0].used * 2 的 2 ^ n （2 的 n 次方幂）</li>
-<li>如果执行的是收缩操作，那么 ht[1] 的大小为第一个大于等于 ht[0].used 的 2 ^ n</li>
-</ul>
-</li>
-<li>将保存在 ht[0] 中的所有键值对 rehash 到 ht[1] 上面：rehash 指的是重新计算键的哈希值和索引值，然后将键值对放置到 ht[1] 哈希表中索引值对应位置上</li>
-<li>当 ht[0] 包含的所有键值对都迁移到了 ht[1] 之后（ht[0] 变为空表），释放 ht[0] ，将 ht[1] 设置为 ht[0] ，并在 ht[1] 新创建一个空白哈希表，为下一次 rehash 做准备</li>
-</ol>
-<a id="more"></a>
-<p>举个例子，假设程序要对下图所示的字典的 ht[0] 进行扩展操作，那么程序执行以下步骤：</p>
-<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/1abf039c-703b-5fde-b67f-c97fe9e3273b.png" alt="图片丢失" title="图1"></p>
-<ol>
-<li><p>ht[0].used 当前的值为 4， 4 * 2 = 8 ，而 8 （2 ^ 3） 恰好是第一个大于等于 8 的 2 的 n 次方，所以程序会将 ht[1] 哈希表的大小设置为 8，下图是为 ht[1] 在分配空间之后字典的样子</p>
-<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/5fbf2db9-21a4-50b7-9dbd-3f78db2da4de.png" alt="图片丢失" title="图2"></p>
-</li>
-<li><p>将保存在 ht[0] 包含的四个键值对都 rehash 到 ht[1]，如下图</p>
-<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/31ed5ffe-6b5e-5d6d-bfbb-53899e9c5ad9.png" alt="图片丢失" title="图3"></p>
-</li>
-<li><p>释放 ht[0]，并将 ht[1] 设置为 ht[0]，然后为 ht[1] 分配一个空白的哈希表，如下图</p>
-<p><img src="https://raw.githubusercontent.com/OUZHANBO/pics/master/img/cb035281-bd11-5778-96e9-c3699b427ea2.png" alt="图片丢失" title="图4"></p>
-</li>
-</ol>
-<p>到此，对哈希表的扩张操作执行完毕，程序成功将哈希表的大小从原来的 4 扩展为 8</p>
-<h3 id="哈希表扩展和收缩的触发条件"><a href="#哈希表扩展和收缩的触发条件" class="headerlink" title="哈希表扩展和收缩的触发条件"></a>哈希表扩展和收缩的触发条件</h3><h4 id="哈希表扩展"><a href="#哈希表扩展" class="headerlink" title="哈希表扩展"></a>哈希表扩展</h4><p>当以下条件中的任意一个被满足时，程序和自动开始对哈希表执行扩展</p>
-<ol>
-<li>服务器目前没有执行 BGSAVE 或者 BGREWRITEAOF 命令，并且哈希表的负载因子大于等于 1；</li>
-<li>服务器目前正在执行 BGSAVE 或者 BGREWRITEAOF 命令，并且哈希表的负载因子大于等于 5；</li>
-</ol>
-<h4 id="哈希表的收缩"><a href="#哈希表的收缩" class="headerlink" title="哈希表的收缩"></a>哈希表的收缩</h4><p>当哈希表的负载因子小于 0.1 时，程序会自动开始对哈希表进行收缩</p>
-<p>哈希表的负载因子的计算公式如下：</p>
-<figure class="highlight c"><table><tr><td class="code"><pre><span class="line">load_factor = ht[<span class="number">0</span>].used / ht[<span class="number">0</span>].size</span><br></pre></td></tr></table></figure>
-<p>根据 BGSAVE 命令或者 BGREWRITEAOF 命令是否正在执行，服务器执行执行操作所需的负载因子并不相同，这是因为正在执行 BGSAVE 或者 BGREWRITEAOF 命令的过程中，Redis 需要创建当前服务进程的子进程，而大多数操作系统都采用写时复制技术来优化进程的使用效率，所以子进程存在的期间，服务器会提高执行扩展操作所需要的负载因子，从而尽量地避免在子进程存在期间进行哈希表扩展操作，这可以避免不必要的内存写入操作，最大限度地节约内存</p>
-]]></content>
-      <tags>
-        <tag>redis</tag>
       </tags>
   </entry>
   <entry>
